@@ -7,6 +7,7 @@ fn main() -> Result<()> {
     let box_ids = read_input()?;
 
     part1(&box_ids);
+    part2(&box_ids);
 
     Ok(())
 }
@@ -49,6 +50,33 @@ fn find_dupes(box_id: &str, target: usize) -> bool {
             return true;
         }
     }
-    
+
     false
+}
+
+fn part2(box_ids: &[String]) {
+    for current in box_ids {
+        for search in box_ids {
+            let (common, diff) = find_common(current, search);
+            if diff == 1 {
+                println!("part2: {}", common);
+                return;
+            }
+        }
+    }
+}
+
+fn find_common(a: &str, b: &str) -> (String, usize) {
+    let mut common = String::new();
+    let mut diffs = 0;
+
+    for (a_letter, b_letter) in a.chars().zip(b.chars()) {
+        if a_letter == b_letter {
+            common.push(a_letter);
+        } else {
+            diffs += 1;
+        }
+    }
+
+    (common, diffs)
 }
