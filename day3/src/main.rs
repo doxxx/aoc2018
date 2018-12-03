@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::io::prelude::*;
+use std::collections::HashMap;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -8,6 +9,7 @@ fn main() -> Result<()> {
     let claims = read_input()?;
 
     part1(&claims);
+    part2(&claims);
 
     Ok(())
 }
@@ -86,4 +88,33 @@ fn part1(claims: &[Claim]) {
     let num_overlaps = grid.cells.iter().filter(|c| **c >= 2).count();
 
     println!("part1: {}", num_overlaps);
+}
+
+fn part2(claims: &[Claim]) {
+    let mut grid: Grid<Vec<usize>> = Grid::new(1000, Vec::new());
+
+    for claim in claims {
+        for x in claim.left..(claim.left + claim.width) {
+            for y in claim.top..(claim.top + claim.height) {
+                grid[(x, y)].push(claim.id);
+            }
+        }
+    }
+
+    let mut overlaps: HashMap<usize,bool> = HashMap::new();
+
+    for ids in grid.cells {
+        if ids.len() > 1 {
+            for id in ids {
+                overlaps.insert(id, true);
+            }
+        }
+    }
+
+    for claim in claims {
+        if !overlaps.contains_key(&claim.id) {
+            println!("part2: {}", claim.id);
+            return;
+        }
+    }
 }
