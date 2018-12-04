@@ -10,6 +10,7 @@ fn main() -> Result<()> {
     let events = read_input()?;
 
     part1(&events);
+    part2(&events);
 
     Ok(())
 }
@@ -100,6 +101,16 @@ enum Activity {
 }
 
 fn part1(events: &[Event]) {
+    let guards = collate_guard_data(events);
+    let most_asleep_guard = guards.values().max_by_key(|g| g.total_asleep).unwrap();
+    let (most_asleep_min, _) = most_asleep_guard.asleep.iter().max_by_key(|(_, count)| *count).unwrap();
+
+    let result = most_asleep_guard.id * (*most_asleep_min as usize);
+
+    println!("part1: {}", result);
+}
+
+fn collate_guard_data(events: &[Event]) -> HashMap<usize,Guard> {
     let mut guards: HashMap<usize,Guard> = HashMap::new();
     let mut current_guard = None;
     let mut sleep_start = Time::default();
@@ -131,12 +142,7 @@ fn part1(events: &[Event]) {
         }
     }
 
-    let most_asleep_guard = guards.values().max_by_key(|g| g.total_asleep).unwrap();
-    let (most_asleep_min, _) = most_asleep_guard.asleep.iter().max_by_key(|(_, count)| *count).unwrap();
-
-    let result = most_asleep_guard.id * (*most_asleep_min as usize);
-
-    println!("part1: {}", result);
+    guards
 }
 
 #[derive(Debug)]
@@ -144,4 +150,30 @@ struct Guard {
     id: usize,
     total_asleep: usize,
     asleep: HashMap<u8,usize>,
+}
+
+fn part2(events: &[Event]) {
+    let guards = collate_guard_data(events);
+    let mut minutes: HashMap<u8, GuardSleepCount> = HashMap::new();
+
+    for guard in guards.values() {
+        for (min, count) in &guard.asleep {
+            let mut val = minutes.entry(*min).or_insert_with(|| GuardSleepCount{id: guard.id, count: *count});
+            if *count > val.count {
+                val.id = guard.id;
+                val.count = *count;
+            }
+        }
+    }
+
+    let (min, guard) = minutes.iter().max_by_key(|(_, guard)| guard.count).unwrap();
+    let result = guard.id * (*min as usize);
+
+    println!("part2: {}", result);
+}
+
+#[derive(Debug)]
+struct GuardSleepCount {
+    id: usize,
+    count: usize,
 }
