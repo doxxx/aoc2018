@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use std::io::prelude::*;
 use std::iter::FromIterator;
 
@@ -7,6 +8,7 @@ fn main() -> Result<()> {
     let polymer = read_input()?;
 
     part1(&polymer);
+    part2(&polymer);
 
     Ok(())
 }
@@ -19,7 +21,13 @@ fn read_input() -> Result<Vec<char>> {
 }
 
 fn part1(polymer: &[char]) {
-    let mut input = Vec::from(polymer);
+    let result = react(Vec::from(polymer));
+
+    println!("{}", String::from_iter(result.iter()));
+    println!("part1: {}", result.len());
+}
+
+fn react(mut input: Vec<char>) -> Vec<char> {
     let mut result: Vec<char> = Vec::new();
 
     loop {
@@ -44,6 +52,24 @@ fn part1(polymer: &[char]) {
         }
     }
 
-    println!("{}", String::from_iter(result.iter()));
-    println!("part1: {}", result.len());
+    result
+}
+
+fn part2(polymer: &[char]) {
+    let units: Vec<char> = (('a' as u8)..('z' as u8)).map(|b| b as char).collect();
+    let shortest = units
+        .par_iter()
+        .map(|c| {
+            let input: Vec<char> = Vec::from_iter(
+                polymer
+                    .iter()
+                    .filter(|cc| *c != cc.to_lowercase().next().unwrap())
+                    .map(|cc| *cc),
+            );
+            react(input).len()
+        })
+        .min()
+        .unwrap();
+
+    println!("part2: {}", shortest);
 }
