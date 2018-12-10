@@ -7,6 +7,7 @@ fn main() -> Result<()> {
     let coordinates = read_input()?;
 
     part1(&coordinates);
+    part2(&coordinates);
 
     Ok(())
 }
@@ -78,4 +79,21 @@ fn closest_coordinate(distances: &[i32]) -> Option<usize> {
     } else {
         Some(index)
     }
+}
+
+fn part2(coordinates: &[Coordinate]) {
+    let (gw, gh) = grid_size(coordinates);
+    let mut count = 0;
+
+    for y in 0..gh {
+        for x in 0..gw {
+            let p = Coordinate { x, y };
+            let sum_distance: i32 = coordinates.iter().map(|c| p.distance(c)).sum();
+            if sum_distance < 10000 {
+                count += 1;
+            }
+        }
+    }
+
+    println!("part2: {}", count)
 }
