@@ -13,6 +13,7 @@ fn main() -> Result<()> {
     let pairs = read_input()?;
 
     part1(&pairs);
+    part2(&pairs, 2);
 
     Ok(())
 }
@@ -86,4 +87,61 @@ fn find_next(steps: &[char], completed: &[char], rules: &HashMap<char, Vec<char>
 
     available.sort();
     available.into_iter().next()
+}
+
+fn part2(pairs: &[(char, char)], num_workers: usize) {
+    let steps = collect_steps(pairs);
+    let rules = build_rules(pairs);
+    let mut completed = Vec::new();
+    let mut workers = vec![Worker(None); num_workers];
+
+    loop {
+        for worker in workers.iter_mut() {
+            if worker.is_idle() {
+                if let Some(next) = find_next(&steps, &completed, &rules) {
+                    worker.assign(next, time_for_step(next));
+                }
+            }
+            if let Some(step) = worker.work() {
+                completed.push(step);
+            }
+        }
+
+        // termination condition
+    }
+
+    let result = String::from_iter(completed.into_iter());
+    
+    println!("part2: {}", result);
+}
+
+fn time_for_step(step: char) -> i32 {
+    60 + (step as i32) - ('A' as i32) + 1
+}
+
+#[derive(Clone)]
+struct Worker(Option<(char, i32)>);
+
+impl Worker {
+    fn is_idle(&self) -> bool {
+        self.0.is_none()
+    }
+
+    fn assign(&mut self, step: char, remaining: i32) {
+        assert!(self.is_idle());
+        self.0 = Some((step, remaining));
+    }
+
+    fn work(&mut self) -> Option<char> {
+        if let Some((step, remaining)) = self.0 {
+            if remaining > 1 {
+                self.0.replace((step, remaining -1));
+                None
+            } else {
+                self.0.take().map(|(step, _)| step)
+            }
+        } else {
+            None
+        }
+    }
 }
