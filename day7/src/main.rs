@@ -1,11 +1,8 @@
-use std::iter::FromIterator;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::io::prelude::*;
-use std::rc::Rc;
-use std::cmp::Eq;
-use std::hash::Hash;
+use std::iter::FromIterator;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -13,7 +10,7 @@ fn main() -> Result<()> {
     let pairs = read_input()?;
 
     part1(&pairs);
-    part2(&pairs, 2);
+    part2(&pairs, 60, 5);
 
     Ok(())
 }
@@ -32,7 +29,10 @@ fn parse_instruction(s: &str) -> (char, char) {
 
     let caps = re.captures(s).unwrap();
 
-    (caps[1].chars().next().unwrap(), caps[2].chars().next().unwrap())
+    (
+        caps[1].chars().next().unwrap(),
+        caps[2].chars().next().unwrap(),
+    )
 }
 
 fn part1(pairs: &[(char, char)]) {
@@ -89,34 +89,54 @@ fn find_next(steps: &[char], completed: &[char], rules: &HashMap<char, Vec<char>
     available.into_iter().next()
 }
 
-fn part2(pairs: &[(char, char)], num_workers: usize) {
-    let steps = collect_steps(pairs);
+fn part2(pairs: &[(char, char)], base_time_per_step: i32, num_workers: usize) {
+    let mut steps = collect_steps(pairs);
+    steps.sort();
+
     let rules = build_rules(pairs);
     let mut completed = Vec::new();
     let mut workers = vec![Worker(None); num_workers];
+    let mut time = 0;
 
     loop {
         for worker in workers.iter_mut() {
             if worker.is_idle() {
                 if let Some(next) = find_next(&steps, &completed, &rules) {
-                    worker.assign(next, time_for_step(next));
+                    steps.remove(steps.binary_search(&next).unwrap());
+                    worker.assign(next, time_for_step(base_time_per_step, next));
                 }
             }
+        }
+
+        print_status(time, &workers, &completed);
+
+        for worker in workers.iter_mut() {
             if let Some(step) = worker.work() {
                 completed.push(step);
             }
         }
 
-        // termination condition
+        time += 1;
+
+        if steps.is_empty() && workers.iter().all(|w| w.is_idle()) {
+            print_status(time, &workers, &completed);
+            break;
+        }
     }
 
-    let result = String::from_iter(completed.into_iter());
-    
-    println!("part2: {}", result);
+    println!("part2: {}", time);
 }
 
-fn time_for_step(step: char) -> i32 {
-    60 + (step as i32) - ('A' as i32) + 1
+fn time_for_step(base: i32, step: char) -> i32 {
+    base + (step as i32) - ('A' as i32) + 1
+}
+
+fn print_status(time: i32, workers: &[Worker], completed: &[char]) {
+    print!("{}\t", time);
+    for worker in workers {
+        print!("{:?}\t", worker.0.unwrap_or(('.', 0)));
+    }
+    println!("{}", String::from_iter(completed.iter()));
 }
 
 #[derive(Clone)]
@@ -135,7 +155,7 @@ impl Worker {
     fn work(&mut self) -> Option<char> {
         if let Some((step, remaining)) = self.0 {
             if remaining > 1 {
-                self.0.replace((step, remaining -1));
+                self.0.replace((step, remaining - 1));
                 None
             } else {
                 self.0.take().map(|(step, _)| step)
