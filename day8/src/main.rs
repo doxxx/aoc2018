@@ -7,6 +7,7 @@ fn main() -> Result<()> {
     let data = read_input()?;
 
     part1(&data);
+    part2(&data);
 
     Ok(())
 }
@@ -44,6 +45,12 @@ fn build_tree(data: &mut Iterator<Item = usize>) -> Node {
     Node { children, metadata }
 }
 
+fn part2(data: &[usize]) {
+    let tree = build_tree(&mut data.iter().map(|d| *d));
+    let result = tree.value();
+    println!("part2: {}", result);
+}
+
 #[derive(Debug)]
 struct Node {
     children: Vec<Node>,
@@ -69,5 +76,16 @@ impl Node {
                 .iter()
                 .map(|n| n.sum_metadata())
                 .sum::<usize>()
+    }
+
+    fn value(&self) -> usize {
+        if self.children.is_empty() {
+            self.metadata.iter().map(|m| *m).sum::<usize>()
+        } else {
+            self.metadata
+                .iter()
+                .map(|m| self.children.get(*m - 1).map_or(0, |n| n.value()))
+                .sum::<usize>()
+        }
     }
 }
