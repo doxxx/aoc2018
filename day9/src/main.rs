@@ -12,13 +12,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_input() -> Result<(usize, usize)> {
+fn read_input() -> Result<(usize, u64)> {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
     Ok(parse_input(&input))
 }
 
-fn parse_input(s: &str) -> (usize, usize) {
+fn parse_input(s: &str) -> (usize, u64) {
     lazy_static! {
         static ref re: Regex =
             Regex::new(r"(\d+) players; last marble is worth (\d+) points").unwrap();
@@ -29,9 +29,9 @@ fn parse_input(s: &str) -> (usize, usize) {
     (caps[1].parse().unwrap(), caps[2].parse().unwrap())
 }
 
-fn part1(num_players: usize, max_marble_value: usize) {
-    let mut circle: Vec<usize> = vec![0];
-    let mut scores: Vec<usize> = vec![0; num_players];
+fn part1(num_players: usize, max_marble_value: u64) {
+    let mut circle: Vec<u64> = vec![0];
+    let mut scores: Vec<u64> = vec![0; num_players];
     let mut current_player: usize = 0;
     let mut current_marble: usize = 0;
 
@@ -63,8 +63,8 @@ fn part1(num_players: usize, max_marble_value: usize) {
         current_player = (current_player + 1) % num_players;
     }
 
-    println!("scores: {:?}", scores);
+    //println!("scores: {:?}", scores);
 
     let result = scores.iter().max().unwrap();
-    println!("part1: {}", result);
+    println!("max score: {}", result);
 }
