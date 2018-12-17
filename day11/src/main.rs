@@ -1,3 +1,4 @@
+use rayon::prelude::*;
 use shared::Grid;
 use std::io::prelude::*;
 
@@ -7,6 +8,7 @@ fn main() -> Result<()> {
     let serial = read_input()?;
 
     part1(serial);
+    part2(serial);
 
     Ok(())
 }
@@ -59,4 +61,23 @@ fn square_power_level(g: &Grid<i64>, x: usize, y: usize, size: usize) -> i64 {
         }
     }
     result
+}
+
+fn part2(serial: i64) {
+    let g: FuelCellGrid = Grid::new_with(300, |x, y| cell_power_level(x + 1, y + 1, serial));
+
+    let square_sizes: Vec<usize> = (1..=300).collect();
+
+    let ((_, x, y), square_size) = square_sizes
+        .par_iter()
+        .map(|&square_size| (search_max_square_power(&g, square_size), square_size))
+        .max_by_key(|((power, _, _), _)| *power)
+        .unwrap();
+
+    println!(
+        "part1: {},{},{}",
+        x + 1,
+        y + 1,
+        square_size
+    );
 }

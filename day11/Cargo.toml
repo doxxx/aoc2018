@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 shared = { path = "../shared" }
+rayon = "1.0.3"
