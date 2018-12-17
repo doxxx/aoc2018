@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::io::prelude::*;
 use std::collections::HashMap;
+use shared::Grid;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -41,36 +42,6 @@ fn parse_claim(s: &str) -> Claim {
         top: caps[3].parse().unwrap(),
         width: caps[4].parse().unwrap(),
         height: caps[5].parse().unwrap(),
-    }
-}
-
-struct Grid<T> {
-    size: usize,
-    cells: Vec<T>,
-}
-
-impl<T: Clone> Grid<T> {
-    pub fn new(size: usize, initial_value: T) -> Grid<T> {
-        Grid {
-            size,
-            cells: vec![initial_value; size * size],
-        }
-    }
-}
-
-impl<T: Clone> std::ops::Index<(usize, usize)> for Grid<T> {
-    type Output = T;
-
-    fn index(&self, coords: (usize, usize)) -> &T {
-        let (x, y) = coords;
-        &self.cells[(y * self.size + x) as usize]
-    }
-}
-
-impl<T: Clone> std::ops::IndexMut<(usize, usize)> for Grid<T> {
-    fn index_mut(&mut self, coords: (usize, usize)) -> &mut T {
-        let (x, y) = coords;
-        &mut self.cells[(y * self.size + x) as usize]
     }
 }
 
