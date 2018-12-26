@@ -10,6 +10,7 @@ fn main() -> Result<()> {
     let (initial_state, rules) = read_input()?;
 
     grow(&initial_state, &rules, 20);
+    grow(&initial_state, &rules, 50000000000);
 
     Ok(())
 }
@@ -84,20 +85,29 @@ impl std::fmt::Display for Rule {
 }
 
 fn grow(initial_state: &[bool], rules: &[Rule], gens: usize) {
-    let mut pots = Pots::new(initial_state);
+    let mut current = Pots::new(initial_state);
 
     // println!("0: {}", pots);
 
     for gen in 1..=gens {
-        pots.grow(rules);
+        let new = current.grow(rules);
+        if new.pots == current.pots {
+            current = Pots {
+                pots: new.pots,
+                offset: (new.offset - current.offset) * (gens - gen + 1) as isize + current.offset,
+            };
+            break;
+        } else {
+            current = new;
+        }
         // println!("{}: {}", gen, pots);
-        // if gen % 1000 == 0 {
-        //     println!("{}: {}", gen, pots);
-        // }
+        if gen % 1000000 == 0 {
+            println!("{}: {}", gen, current);
+        }
     }
 
-    let sum: isize = (pots.left_extent()..=pots.right_extent())
-        .map(|i| if pots[i] { i } else { 0 })
+    let sum: isize = (current.left_extent()..=current.right_extent())
+        .map(|i| if current[i] { i } else { 0 })
         .sum();
 
     println!("result: {}", sum);
@@ -106,21 +116,17 @@ fn grow(initial_state: &[bool], rules: &[Rule], gens: usize) {
 #[derive(Clone)]
 struct Pots {
     pots: Vec<bool>,
-    zero: isize,
+    offset: isize,
 }
 
 impl Pots {
     fn new(initial_state: &[bool]) -> Pots {
-        let mut pots = vec![false; initial_state.len() * 2];
-        let zero = pots.len() / 2;
-        pots[zero..zero + initial_state.len()].copy_from_slice(initial_state);
-        Pots {
-            pots,
-            zero: zero as isize,
-        }
+        let mut pots = vec![false; initial_state.len() + 10];
+        pots[5..5 + initial_state.len()].copy_from_slice(initial_state);
+        Pots { pots, offset: -5 }
     }
 
-    fn grow(&mut self, rules: &[Rule]) {
+    fn grow(&mut self, rules: &[Rule]) -> Pots {
         let mut new = self.clone();
         let mut leftmost = self.leftmost();
         let mut rightmost = self.rightmost();
@@ -144,30 +150,32 @@ impl Pots {
             }
         }
 
-        if new.left_extent() - leftmost > -3 {
-            new.extend_left(5);
-        }
-        if new.right_extent() - rightmost < 3 {
-            new.extend_right(5);
+        if leftmost > new.left_extent() + 3 {
+            let len = (rightmost - leftmost) as usize + 6;
+            let leftmost_index = (leftmost - self.offset) as usize - 3;
+            overlapping_copy(&mut new.pots, leftmost_index..(leftmost_index + len), 0);
+            new.pots.truncate(len);
+            new.offset += leftmost_index as isize;
         }
 
-        *self = new;
+        if leftmost - new.left_extent() < 3 {
+            new.extend_left(3);
+        }
+        if new.right_extent() - rightmost < 3 {
+            new.extend_right(3);
+        }
+
+        new
     }
 
     fn extend_left(&mut self, n: usize) {
-        // println!("before resize: {:?}", self.pots);
         let new_len = self.pots.len() + n;
         self.pots.resize(new_len, false);
-        // println!("after resize:  {:?}", self.pots);
-        for i in (n..new_len).rev() {
-            self.pots[i] = self.pots[i - n];
-        }
-        // println!("after shift:   {:?}", self.pots);
+        overlapping_copy(&mut self.pots, n..new_len, 0);
         for i in 0..n {
             self.pots[i] = false;
         }
-        // println!("after zero:    {:?}", self.pots);
-        self.zero += n as isize;
+        self.offset -= n as isize;
     }
 
     fn extend_right(&mut self, n: usize) {
@@ -176,17 +184,17 @@ impl Pots {
     }
 
     fn left_extent(&self) -> isize {
-        0 - self.zero
+        self.offset
     }
 
     fn right_extent(&self) -> isize {
-        (self.pots.len() as isize) - self.zero - 1
+        self.offset + (self.pots.len() as isize) - 1
     }
 
     fn leftmost(&self) -> isize {
-        for i in 0..self.pots.len() {
-            if self.pots[i] {
-                return (i as isize) - self.zero;
+        for i in self.left_extent()..=self.right_extent() {
+            if self[i] {
+                return i;
             }
         }
 
@@ -194,9 +202,9 @@ impl Pots {
     }
 
     fn rightmost(&self) -> isize {
-        for i in (0..self.pots.len()).rev() {
-            if self.pots[i] {
-                return (i as isize) - self.zero;
+        for i in (self.left_extent()..=self.right_extent()).rev() {
+            if self[i] {
+                return i;
             }
         }
 
@@ -207,7 +215,7 @@ impl Pots {
 impl std::fmt::Display for Pots {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = String::from_iter(self.pots.iter().map(|&p| if p { '#' } else { '.' }));
-        write!(f, "{}", s)
+        write!(f, "{:+} {}", self.offset, s)
     }
 }
 
@@ -215,7 +223,7 @@ impl Index<isize> for Pots {
     type Output = bool;
 
     fn index(&self, index: isize) -> &bool {
-        &self.pots[(self.zero + index) as usize]
+        &self.pots[(index - self.offset) as usize]
     }
 }
 
@@ -223,14 +231,43 @@ impl Index<std::ops::Range<isize>> for Pots {
     type Output = [bool];
 
     fn index(&self, index: std::ops::Range<isize>) -> &[bool] {
-        let start = (self.zero + index.start) as usize;
-        let end = (self.zero + index.end) as usize;
+        let start = (index.start - self.offset) as usize;
+        let end = (index.end - self.offset) as usize;
         &self.pots[start..end]
     }
 }
 
 impl IndexMut<isize> for Pots {
     fn index_mut(&mut self, index: isize) -> &mut bool {
-        &mut self.pots[(self.zero + index) as usize]
+        &mut self.pots[(index - self.offset) as usize]
+    }
+}
+
+fn overlapping_copy<T, From>(s: &mut [T], from: From, to: usize)
+where
+    T: Copy,
+    From: std::ops::RangeBounds<usize> + std::iter::Iterator,
+{
+    let from_start = match from.start_bound() {
+        std::ops::Bound::Unbounded => 0,
+        std::ops::Bound::Included(i) => *i,
+        std::ops::Bound::Excluded(i) => *i + 1,
+    };
+    let from_end = match from.end_bound() {
+        std::ops::Bound::Unbounded => s.len() - 1,
+        std::ops::Bound::Included(i) => *i,
+        std::ops::Bound::Excluded(i) => *i - 1,
+    };
+
+    if to < from_start {
+        for i in from_start..=from_end {
+            s[i - from_start + to] = s[i];
+        }
+    } else if to > from_start {
+        for i in (from_start..=from_end).rev() {
+            s[i - from_start + to] = s[i];
+        }
+    } else {
+        panic!();
     }
 }
