@@ -1,3 +1,5 @@
+use std::convert::AsMut;
+
 pub struct Grid<T> {
     pub size: usize,
     pub cells: Vec<T>,
@@ -41,4 +43,14 @@ impl<T: Clone> std::ops::IndexMut<(usize, usize)> for Grid<T> {
         let (x, y) = coords;
         &mut self.cells[(y * self.size + x) as usize]
     }
+}
+
+pub fn copy_into_array<A, T>(slice: &[T]) -> A
+where
+    A: Default + AsMut<[T]>,
+    T: Copy,
+{
+    let mut a = Default::default();
+    <A as AsMut<[T]>>::as_mut(&mut a).copy_from_slice(slice);
+    a
 }
