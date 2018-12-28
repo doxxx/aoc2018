@@ -252,19 +252,6 @@ enum Direction {
     Straight,
 }
 
-#[derive(Debug)]
-struct Crash {
-    pos: Point,
-}
-
-impl fmt::Display for Crash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "crash: {}", self.pos)
-    }
-}
-
-impl std::error::Error for Crash {}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Point(usize, usize);
 
