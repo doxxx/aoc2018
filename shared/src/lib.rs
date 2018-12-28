@@ -1,5 +1,6 @@
 use std::convert::AsMut;
 
+#[derive(Clone)]
 pub struct Grid<T> {
     pub size: usize,
     pub cells: Vec<T>,

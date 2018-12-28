@@ -7,11 +7,10 @@ use std::io::prelude::*;
 type GenericResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> GenericResult<()> {
-    let mut system = read_input()?;
+    let system = read_input()?;
 
-    // system.print();
-
-    part1(&mut system);
+    part1(system.clone());
+    part2(system.clone());
 
     Ok(())
 }
@@ -47,21 +46,17 @@ fn read_input() -> GenericResult<System> {
     Ok(System { tracks, cars })
 }
 
-fn part1(sys: &mut System) {
-    loop {
-        // println!("tick!");
-        match sys.tick() {
-            Err(err) => {
-                println!("{}", err);
-                return;
-            }
-            Ok(_) => {
-                // sys.print();
-            }
-        }
-    }
+fn part1(mut sys: System) {
+    println!("part1:");
+    while sys.tick(false) {}
 }
 
+fn part2(mut sys: System) {
+    println!("part2:");
+    while sys.tick(true) {}
+}
+
+#[derive(Clone)]
 struct System {
     tracks: Grid<RefCell<TrackCell>>,
     cars: Vec<Car>,
@@ -85,33 +80,57 @@ impl System {
         println!();
     }
 
-    fn tick(&mut self) -> Result<(), Crash> {
-        self.cars.sort_unstable_by_key(|car| car.pos);
-
-        for car in &mut self.cars {
-            let Point(x, y) = car.pos;
-
-            car.next_pos();
-
-            let nc = &self.tracks[car.pos.into()];
-
-            if nc.borrow().occupied {
-                return Err(Crash {
-                    pos: car.pos.into(),
-                });
+    fn tick(&mut self, remove_crashes: bool) -> bool {
+        let num_remaining_cars = self.cars.iter().filter(|c| !c.removed).count();
+        if num_remaining_cars <= 1 {
+            if let Some(car) = self.cars.iter().find(|c| !c.removed) {
+                println!("remaining car: {}", car.pos);
+                return false;
             }
-
-            let nc_track = nc.borrow().track;
-            if nc_track != '-' && nc_track != '|' {
-                car.turn(nc_track);
-            }
-
-            let c = &self.tracks[(x, y)];
-            c.borrow_mut().occupied = false;
-            nc.borrow_mut().occupied = true;
         }
 
-        Ok(())
+        self.cars.sort_unstable_by_key(|car| car.pos);
+
+        for i in 0..self.cars.len() {
+            let car = &self.cars[i];
+
+            if car.removed {
+                continue;
+            }
+
+            let mut car = car.clone();
+            let cell = &self.tracks[car.pos.into()];
+            car.next_pos();
+            cell.borrow_mut().occupied = false;
+
+            let next_cell = &self.tracks[car.pos.into()];
+
+            if next_cell.borrow().occupied {
+                println!("crash: {}", car.pos);
+                if !remove_crashes {
+                    return false;
+                }
+
+                car.removed = true;
+                self.cars
+                    .iter_mut()
+                    .filter(|c| c.pos == car.pos)
+                    .for_each(|c| c.removed = true);
+
+                next_cell.borrow_mut().occupied = false;
+            } else {
+                let nc_track = next_cell.borrow().track;
+                if nc_track != '-' && nc_track != '|' {
+                    car.turn(nc_track);
+                }
+
+                next_cell.borrow_mut().occupied = true;
+            }
+
+            self.cars[i] = car;
+        }
+
+        true
     }
 }
 
@@ -133,10 +152,12 @@ impl TrackCell {
     }
 }
 
+#[derive(Clone)]
 struct Car {
     pos: Point,
     facing: char,
     turns: usize,
+    removed: bool,
 }
 
 impl Car {
@@ -145,6 +166,7 @@ impl Car {
             pos: Point(x, y),
             facing,
             turns: 0,
+            removed: false,
         }
     }
 
