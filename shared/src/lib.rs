@@ -1,4 +1,5 @@
 use std::convert::AsMut;
+use std::fmt;
 
 #[derive(Clone)]
 pub struct Grid<T> {
@@ -48,6 +49,19 @@ impl<T: Clone> Grid<T> {
             x: 0,
             y: 0,
         }
+    }
+}
+
+impl<T: Clone + Into<char>> fmt::Display for Grid<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for y in 0..self.size {
+            for x in 0..self.size {
+                let c: char = self.get(x, y).clone().into(); // TODO: avoid clone?
+                write!(f, "{}", c)?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
     }
 }
 
