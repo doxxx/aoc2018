@@ -49,27 +49,16 @@ fn read_input() -> std::io::Result<System> {
     Ok(System::new(map, units))
 }
 
-fn combined_map(map: &Map, units: &[Unit]) -> Map {
-    let mut combined_map = map.clone();
-    for unit in units.iter() {
-        if unit.hp > 0 {
-            combined_map[unit.pos] = unit.kind;
-        }
-    }
-    combined_map
-}
-
 struct System {
     map: Map,
     units: Vec<Unit>,
 }
 
 #[derive(Debug)]
-enum MoveResult {
-    NoEnemies,
-    Move(Pos),
-    CannotMove,
+enum Enemies<'a> {
+    None,
     InRange,
+    OutOfRange(Vec<&'a Unit>),
 }
 
 impl System {
@@ -108,31 +97,40 @@ impl System {
         self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
 
         for i in 0..self.units.len() {
-            print!(
-                "Unit {}@{:?} tries to move... ",
-                self.units[i].kind, self.units[i].pos
-            );
-
-            match self.try_move(&self.units[i]) {
-                MoveResult::NoEnemies => {
-                    println!("no more enemies; ending combat.");
+            match self.check_enemies(&self.units[i]) {
+                Enemies::None => {
+                    println!(
+                        "Unit {}@{:?} finds no more enemies; ending combat.",
+                        self.units[i].kind, self.units[i].pos
+                    );
                     self.clear_dead();
                     self.print_summary(rounds);
                     return false;
                 }
-                MoveResult::Move(new_pos) => {
-                    println!("moving to {:?}.", new_pos);
-                    self.map[self.units[i].pos] = '.';
-                    self.units[i].pos = new_pos;
-                    self.map[self.units[i].pos] = self.units[i].kind;
+                Enemies::InRange => {
+                    println!(
+                        "Unit {}@{:?} already in-range of enemies.",
+                        self.units[i].kind, self.units[i].pos
+                    );
                 }
-                MoveResult::CannotMove => {
-                    println!("cannot move.");
-                    continue;
-                }
-                MoveResult::InRange => {
-                    println!("in range of enemy.");
-                }
+                Enemies::OutOfRange(enemies) => match self.try_move(&self.units[i], enemies) {
+                    Some(new_pos) => {
+                        println!(
+                            "Unit {}@{:?} moving to {:?}.",
+                            self.units[i].kind, self.units[i].pos, new_pos
+                        );
+                        self.map[self.units[i].pos] = '.';
+                        self.units[i].pos = new_pos;
+                        self.map[self.units[i].pos] = self.units[i].kind;
+                    }
+                    None => {
+                        println!(
+                            "Unit {}@{:?} cannot move.",
+                            self.units[i].kind, self.units[i].pos
+                        );
+                        continue;
+                    }
+                },
             }
 
             if let Some((target, ap)) = self.attack(&self.units[i]) {
@@ -169,78 +167,66 @@ impl System {
         println!();
     }
 
-    fn try_move(&self, unit: &Unit) -> MoveResult {
+    fn check_enemies<'a>(&'a self, unit: &Unit) -> Enemies<'a> {
         let enemies: Vec<&Unit> = self
             .units
             .iter()
-            .filter(|u| u.kind != unit.kind && u.hp > 0)
+            .filter(|e| e.kind != unit.kind && e.hp > 0)
             .collect();
         if enemies.is_empty() {
-            return MoveResult::NoEnemies;
+            return Enemies::None;
         }
 
-        if enemies.iter().any(|u| unit.in_range(&u)) {
-            return MoveResult::InRange;
+        if enemies.iter().any(|e| unit.in_range(&e)) {
+            return Enemies::InRange;
         }
 
-        let unit_positions: Vec<Pos> = self
-            .units
-            .iter()
-            .filter(|u| u.hp > 0)
-            .map(|u| u.pos)
-            .collect();
-        // println!("unit_positions={:?}", unit_positions);
+        Enemies::OutOfRange(enemies)
+    }
+
+    fn try_move(&self, unit: &Unit, enemies: Vec<&Unit>) -> Option<Pos> {
         let open_squares: Vec<Pos> = enemies
             .iter()
-            .flat_map(|u| self.map.open_squares_around(u.pos.0, u.pos.1))
-            .filter(|p| !unit_positions.contains(p))
+            .flat_map(|e| self.map.open_squares_around(e.pos.0, e.pos.1))
             .collect();
-        // println!("open_squares={:?}", open_squares);
 
         if open_squares.is_empty() {
-            return MoveResult::CannotMove;
+            return None;
         }
 
-        let mut paths: Vec<Vec<Pos>> = open_squares
+        let mut shortest_paths: Vec<Vec<Pos>> = open_squares
             .into_iter()
-            .flat_map(|pos| {
+            .flat_map(|dest| {
                 self.map
-                    .shortest_paths(unit.pos.0, unit.pos.1, pos.0, pos.1)
+                    .shortest_paths(unit.pos.0, unit.pos.1, dest.0, dest.1)
             })
             .collect();
 
-        if paths.is_empty() {
-            return MoveResult::CannotMove;
+        if shortest_paths.is_empty() {
+            return None;
         }
 
-        paths.sort_by_key(|p| p.len());
-
-        let fewest_steps = paths.first().unwrap().len();
-        let mut shortest_paths: Vec<Vec<Pos>> = paths
-            .into_iter()
-            .filter(|p| p.len() == fewest_steps)
-            .collect();
         shortest_paths.sort_by(|a, b| cmp_pos(a[0], b[0]));
         let shortest_path = shortest_paths.first().unwrap();
-        MoveResult::Move(shortest_path.first().cloned().unwrap())
+        shortest_path.first().cloned()
     }
 
     fn attack(&self, unit: &Unit) -> Option<(Pos, usize)> {
         let mut enemies: Vec<&Unit> = self
             .units
             .iter()
-            .filter(|u| u.kind != unit.kind && u.hp > 0 && unit.in_range(&u))
+            .filter(|&e| e.kind != unit.kind && e.hp > 0 && unit.in_range(e))
             .collect();
 
         if enemies.is_empty() {
             return None;
         }
 
-        enemies.sort_by_key(|u| u.hp);
+        enemies.sort_by_key(|&e| e.hp);
         let fewest_hp = enemies.first().unwrap().hp;
-        let mut enemies: Vec<&Unit> = enemies.into_iter().filter(|u| u.hp == fewest_hp).collect();
-        enemies.sort_by(|a, b| cmp_pos(a.pos, b.pos));
-        enemies.first().map(|t| (t.pos, unit.ap))
+        let mut enemies: Vec<&Unit> = enemies.into_iter().filter(|&e| e.hp == fewest_hp).collect();
+        enemies.sort_by(|&a, &b| cmp_pos(a.pos, b.pos));
+        enemies.first().map(|&e| (e.pos, unit.ap))
     }
 }
 
@@ -313,6 +299,14 @@ struct Explorer<'a> {
 impl<'a> Explorer<'a> {
     fn explore(&mut self, sx: usize, sy: usize, path: Vec<Pos>) {
         if sx == self.dx && sy == self.dy {
+            if self
+                .paths
+                .first()
+                .map(|p| p.len() > path.len())
+                .unwrap_or(true)
+            {
+                self.paths.clear();
+            }
             self.paths.push(path);
             return;
         }
@@ -334,7 +328,6 @@ impl<'a> Explorer<'a> {
     fn step(&mut self, nx: usize, ny: usize, path: &[Pos]) {
         if *self.map.get(nx, ny) == '.' {
             if !path.contains(&(nx, ny)) {
-                // TODO: Use rpds?
                 let mut path = Vec::from(path);
                 path.push((nx, ny));
                 self.explore(nx, ny, path);
