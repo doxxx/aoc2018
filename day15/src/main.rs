@@ -33,7 +33,6 @@ fn read_input() -> std::io::Result<System> {
                         hp: 200,
                         ap: 3,
                     });
-                    *c = '.'
                 }
                 '#' => {}
                 '.' => {}
@@ -71,39 +70,78 @@ impl System {
     }
 
     fn run(&mut self) {
-        for i in 0..3 {
-            println!("Step {}:\n{}", i, combined_map(&self.map, &self.units));
+        self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
+        println!("Initial:\n{}", self.map);
+        self.units
+            .iter()
+            .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
+        println!();
+
+        for i in 1..=30 {
+            println!("Step {}:", i);
 
             self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
 
             for i in 0..self.units.len() {
                 if let Some(new_pos) = self.move_unit(&self.units[i]) {
+                    self.map[self.units[i].pos] = '.';
                     self.units[i].pos = new_pos;
+                    self.map[self.units[i].pos] = self.units[i].kind;
                     if let Some((target, ap)) = self.attack(&self.units[i]) {
+                        let attacker_kind = self.units[i].kind;
+                        let attacker_pos = self.units[i].pos;
                         if let Some(mut u) = self.units.iter_mut().find(|u| u.pos == target) {
-                            u.hp -= ap;
+                            println!(
+                                "{}@{:?} >>> {}@{:?}",
+                                attacker_kind, attacker_pos, u.kind, u.pos
+                            );
+                            if u.hp < ap {
+                                u.hp = 0;
+                                self.map[u.pos] = '.';
+                            } else {
+                                u.hp -= ap;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        println!("Final:\n{}", combined_map(&self.map, &self.units));
+            self.units = self.units.iter().filter(|u| u.hp > 0).cloned().collect();
+
+            println!();
+            println!("After step {}:\n{}", i, self.map);
+            self.units
+                .iter()
+                .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
+            println!();
+        }
     }
 
     fn move_unit(&self, unit: &Unit) -> Option<Pos> {
-        if self.units.iter().any(|u| unit.in_range(&u)) {
+        println!("Moving {}@{:?}", unit.kind, unit.pos);
+        let enemies: Vec<&Unit> = self
+            .units
+            .iter()
+            .filter(|u| u.kind != unit.kind && u.hp > 0)
+            .collect();
+
+        if enemies.iter().any(|u| unit.in_range(&u)) {
             return Some(unit.pos);
         }
 
-        let unit_positions: Vec<Pos> = self.units.iter().map(|u| u.pos).collect();
-        let open_squares: Vec<Pos> = self
+        let unit_positions: Vec<Pos> = self
             .units
             .iter()
-            .filter(|u| u.kind != unit.kind)
+            .filter(|u| u.hp > 0)
+            .map(|u| u.pos)
+            .collect();
+        println!("unit_positions={:?}", unit_positions);
+        let open_squares: Vec<Pos> = enemies
+            .iter()
             .flat_map(|u| self.map.open_squares_around(u.pos.0, u.pos.1))
             .filter(|p| !unit_positions.contains(p))
             .collect();
+        println!("open_squares={:?}", open_squares);
 
         if open_squares.is_empty() {
             return None;
@@ -122,8 +160,8 @@ impl System {
         }
 
         paths.sort_by_key(|p| p.len());
-        let fewest_steps = paths.first().unwrap().len();
 
+        let fewest_steps = paths.first().unwrap().len();
         let mut shortest_paths: Vec<Vec<Pos>> = paths
             .into_iter()
             .filter(|p| p.len() == fewest_steps)
@@ -134,18 +172,21 @@ impl System {
     }
 
     fn attack(&self, unit: &Unit) -> Option<(Pos, usize)> {
-        let mut in_range: Vec<&Unit> = self.units.iter().filter(|u| unit.in_range(&u)).collect();
-        if in_range.is_empty() {
+        let mut enemies: Vec<&Unit> = self
+            .units
+            .iter()
+            .filter(|u| u.kind != unit.kind && u.hp > 0 && unit.in_range(&u))
+            .collect();
+
+        if enemies.is_empty() {
             return None;
         }
 
-        in_range.sort_by_key(|u| u.hp);
-        let fewest_hp = in_range.first().unwrap().hp;
-
-        let mut targets: Vec<&Unit> = in_range.into_iter().filter(|u| u.hp == fewest_hp).collect();
-        targets.sort_by(|a, b| cmp_pos(a.pos, b.pos));
-
-        targets.first().map(|t| (t.pos, unit.ap))
+        enemies.sort_by_key(|u| u.hp);
+        let fewest_hp = enemies.first().unwrap().hp;
+        let mut enemies: Vec<&Unit> = enemies.into_iter().filter(|u| u.hp == fewest_hp).collect();
+        enemies.sort_by(|a, b| cmp_pos(a.pos, b.pos));
+        enemies.first().map(|t| (t.pos, unit.ap))
     }
 }
 
