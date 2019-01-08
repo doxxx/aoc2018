@@ -1,5 +1,4 @@
 use shared::Grid;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::io;
 use std::io::prelude::*;
@@ -30,8 +29,7 @@ fn read_input() -> std::io::Result<System> {
                 'G' | 'E' => {
                     units.push(Unit {
                         kind: *c,
-                        x,
-                        y,
+                        pos: (x, y),
                         hp: 200,
                         ap: 3,
                     });
@@ -52,35 +50,40 @@ fn read_input() -> std::io::Result<System> {
     Ok(System::new(map, units))
 }
 
-fn combined_map(map: &Map, units: &[RefCell<Unit>]) -> Map {
+fn combined_map(map: &Map, units: &[Unit]) -> Map {
     let mut combined_map = map.clone();
     for unit in units.iter() {
-        let unit = unit.borrow();
-        combined_map[(unit.x, unit.y)] = unit.kind;
+        if unit.hp > 0 {
+            combined_map[unit.pos] = unit.kind;
+        }
     }
     combined_map
 }
 
 struct System {
     map: Map,
-    units: Vec<RefCell<Unit>>,
+    units: Vec<Unit>,
 }
 
 impl System {
     fn new(map: Map, units: Vec<Unit>) -> System {
-        System {
-            map,
-            units: units.into_iter().map(RefCell::new).collect(),
-        }
+        System { map, units }
     }
 
     fn run(&mut self) {
         for i in 0..3 {
             println!("Step {}:\n{}", i, combined_map(&self.map, &self.units));
 
-            for unit in self.units.iter() {
-                if self.move_unit(&unit) {
-                    self.attack(&unit);
+            self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
+
+            for i in 0..self.units.len() {
+                if let Some(new_pos) = self.move_unit(&self.units[i]) {
+                    self.units[i].pos = new_pos;
+                    if let Some((target, ap)) = self.attack(&self.units[i]) {
+                        if let Some(mut u) = self.units.iter_mut().find(|u| u.pos == target) {
+                            u.hp -= ap;
+                        }
+                    }
                 }
             }
         }
@@ -88,42 +91,34 @@ impl System {
         println!("Final:\n{}", combined_map(&self.map, &self.units));
     }
 
-    fn move_unit(&self, unit: &RefCell<Unit>) -> bool {
-        if self
-            .units
-            .iter()
-            .any(|u| unit.borrow().in_range(&u.borrow()))
-        {
-            return false;
+    fn move_unit(&self, unit: &Unit) -> Option<Pos> {
+        if self.units.iter().any(|u| unit.in_range(&u)) {
+            return Some(unit.pos);
         }
 
-        let unit_positions: Vec<Pos> = self
-            .units
-            .iter()
-            .map(|u| (u.borrow().x, u.borrow().y))
-            .collect();
+        let unit_positions: Vec<Pos> = self.units.iter().map(|u| u.pos).collect();
         let open_squares: Vec<Pos> = self
             .units
             .iter()
-            .filter(|u| u.borrow().kind != unit.borrow().kind)
-            .flat_map(|u| self.map.open_squares_around(u.borrow().x, u.borrow().y))
+            .filter(|u| u.kind != unit.kind)
+            .flat_map(|u| self.map.open_squares_around(u.pos.0, u.pos.1))
             .filter(|p| !unit_positions.contains(p))
             .collect();
 
         if open_squares.is_empty() {
-            return false;
+            return None;
         }
 
         let mut paths: Vec<Vec<Pos>> = open_squares
             .into_iter()
             .flat_map(|pos| {
                 self.map
-                    .shortest_paths(unit.borrow().x, unit.borrow().y, pos.0, pos.1)
+                    .shortest_paths(unit.pos.0, unit.pos.1, pos.0, pos.1)
             })
             .collect();
 
         if paths.is_empty() {
-            return false;
+            return None;
         }
 
         paths.sort_by_key(|p| p.len());
@@ -135,35 +130,22 @@ impl System {
             .collect();
         shortest_paths.sort_by(|a, b| cmp_pos(a[0], b[0]));
         let shortest_path = shortest_paths.first().unwrap();
-        let (nx, ny) = shortest_path.first().cloned().unwrap();
-
-        unit.borrow_mut().x = nx;
-        unit.borrow_mut().y = ny;
-
-        true
+        shortest_path.first().cloned()
     }
 
-    fn attack(&self, unit: &RefCell<Unit>) -> bool {
-        let mut in_range: Vec<&RefCell<Unit>> = self
-            .units
-            .iter()
-            .filter(|u| unit.borrow().in_range(&u.borrow()))
-            .collect();
+    fn attack(&self, unit: &Unit) -> Option<(Pos, usize)> {
+        let mut in_range: Vec<&Unit> = self.units.iter().filter(|u| unit.in_range(&u)).collect();
         if in_range.is_empty() {
-            return false;
+            return None;
         }
 
-        in_range.sort_by_key(|u| u.borrow().hp);
-        let fewest_hp = in_range.first().unwrap().borrow().hp;
+        in_range.sort_by_key(|u| u.hp);
+        let fewest_hp = in_range.first().unwrap().hp;
 
-        let mut targets: Vec<&RefCell<Unit>> = in_range
-            .into_iter()
-            .filter(|u| u.borrow().hp == fewest_hp)
-            .collect();
-        targets.sort_by(|a, b| cmp_pos((a.borrow().x, a.borrow().y), (b.borrow().x, b.borrow().y)));
-        targets[0].borrow_mut().hp -= unit.borrow().ap;
+        let mut targets: Vec<&Unit> = in_range.into_iter().filter(|u| u.hp == fewest_hp).collect();
+        targets.sort_by(|a, b| cmp_pos(a.pos, b.pos));
 
-        true
+        targets.first().map(|t| (t.pos, unit.ap))
     }
 }
 
@@ -266,27 +248,14 @@ impl<'a> Explorer<'a> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Unit {
     kind: char,
-    x: usize,
-    y: usize,
+    pos: Pos,
     hp: usize,
     ap: usize,
 }
 
 impl Ord for Unit {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.y < other.y {
-            Ordering::Less
-        } else if self.y == other.y {
-            if self.x < other.x {
-                Ordering::Less
-            } else if self.x > other.x {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        } else {
-            Ordering::Greater
-        }
+        cmp_pos(self.pos, other.pos)
     }
 }
 
@@ -298,7 +267,8 @@ impl PartialOrd for Unit {
 
 impl Unit {
     fn in_range(&self, other: &Unit) -> bool {
-        (self.x == other.x && (self.y - 1 == other.y || self.y + 1 == other.y))
-            || (self.y == other.y && (self.x - 1 == other.x || self.x + 1 == other.x))
+        let (sx, sy) = self.pos;
+        let (ox, oy) = other.pos;
+        (sx == ox && (sy - 1 == oy || sy + 1 == oy)) || (sy == oy && (sx - 1 == ox || sx + 1 == ox))
     }
 }
