@@ -77,7 +77,7 @@ impl System {
             .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
         println!();
 
-        for i in 1..=30 {
+        for i in 1..=47 {
             println!("Step {}:", i);
 
             self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
@@ -263,26 +263,31 @@ impl<'a> Explorer<'a> {
             return;
         }
 
-        if self.dy < sy {
-            self.step(sx, sy - 1, path.clone());
+        if sy > 0 {
+            self.step(sx, sy - 1, &path);
         }
-        if self.dx > sx {
-            self.step(sx + 1, sy, path.clone());
+        if sx > 0 {
+            self.step(sx - 1, sy, &path);
         }
-        if self.dx < sx {
-            self.step(sx - 1, sy, path.clone());
+        if sx < self.map.size - 1 {
+            self.step(sx + 1, sy, &path);
         }
-        if self.dy > sy {
-            self.step(sx, sy + 1, path.clone());
+        if sy < self.map.size - 1 {
+            self.step(sx, sy + 1, &path);
         }
     }
 
-    fn step(&mut self, nx: usize, ny: usize, mut path: Vec<Pos>) {
+    fn step(&mut self, nx: usize, ny: usize, path: &[Pos]) {
         if *self.map.get(nx, ny) == '.' {
-            path.push((nx, ny));
-            self.explore(nx, ny, path);
+            if !path.contains(&(nx, ny)) {
+                // TODO: Use rpds?
+                let mut path = Vec::from(path);
+                path.push((nx, ny));
+                self.explore(nx, ny, path);
+            }
         }
-        // else deadend
+
+        // deadend
     }
 }
 
