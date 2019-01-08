@@ -64,6 +64,14 @@ struct System {
     units: Vec<Unit>,
 }
 
+#[derive(Debug)]
+enum MoveResult {
+    NoEnemies,
+    Move(Pos),
+    CannotMove,
+    InRange,
+}
+
 impl System {
     fn new(map: Map, units: Vec<Unit>) -> System {
         System { map, units }
@@ -77,56 +85,102 @@ impl System {
             .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
         println!();
 
-        for i in 1..=47 {
-            println!("Step {}:", i);
+        let mut rounds = 1;
 
-            self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
+        loop {
+            println!("Round {}:", rounds);
 
-            for i in 0..self.units.len() {
-                if let Some(new_pos) = self.move_unit(&self.units[i]) {
+            if !self.eval_round(rounds) {
+                break;
+            }
+
+            rounds += 1;
+        }
+
+        let completed_rounds = rounds - 1;
+        let outcome = self.units.iter().map(|u| u.hp).sum::<usize>() * completed_rounds;
+
+        println!("Completed rounds: {}", completed_rounds);
+        println!("Battle outcome: {}", outcome);
+    }
+
+    fn eval_round(&mut self, rounds: usize) -> bool {
+        self.units.sort_by(|a, b| cmp_pos(a.pos, b.pos));
+
+        for i in 0..self.units.len() {
+            print!(
+                "Unit {}@{:?} tries to move... ",
+                self.units[i].kind, self.units[i].pos
+            );
+
+            match self.try_move(&self.units[i]) {
+                MoveResult::NoEnemies => {
+                    println!("no more enemies; ending combat.");
+                    self.clear_dead();
+                    self.print_summary(rounds);
+                    return false;
+                }
+                MoveResult::Move(new_pos) => {
+                    println!("moving to {:?}.", new_pos);
                     self.map[self.units[i].pos] = '.';
                     self.units[i].pos = new_pos;
                     self.map[self.units[i].pos] = self.units[i].kind;
-                    if let Some((target, ap)) = self.attack(&self.units[i]) {
-                        let attacker_kind = self.units[i].kind;
-                        let attacker_pos = self.units[i].pos;
-                        if let Some(mut u) = self.units.iter_mut().find(|u| u.pos == target) {
-                            println!(
-                                "{}@{:?} >>> {}@{:?}",
-                                attacker_kind, attacker_pos, u.kind, u.pos
-                            );
-                            if u.hp < ap {
-                                u.hp = 0;
-                                self.map[u.pos] = '.';
-                            } else {
-                                u.hp -= ap;
-                            }
-                        }
-                    }
+                }
+                MoveResult::CannotMove => {
+                    println!("cannot move.");
+                    continue;
+                }
+                MoveResult::InRange => {
+                    println!("in range of enemy.");
                 }
             }
 
-            self.units = self.units.iter().filter(|u| u.hp > 0).cloned().collect();
-
-            println!();
-            println!("After step {}:\n{}", i, self.map);
-            self.units
-                .iter()
-                .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
-            println!();
+            if let Some((target, ap)) = self.attack(&self.units[i]) {
+                if let Some(mut u) = self.units.iter_mut().find(|u| u.pos == target) {
+                    print!("Attacking {}@{:?}... ", u.kind, u.pos);
+                    if u.hp < ap {
+                        println!("dead!");
+                        u.hp = 0;
+                        self.map[u.pos] = '.';
+                    } else {
+                        u.hp -= ap;
+                        println!("{} HP lost! {} HP remaining.", ap, u.hp);
+                    }
+                }
+            }
         }
+
+        self.clear_dead();
+        self.print_summary(rounds);
+
+        true
     }
 
-    fn move_unit(&self, unit: &Unit) -> Option<Pos> {
-        println!("Moving {}@{:?}", unit.kind, unit.pos);
+    fn clear_dead(&mut self) {
+        self.units = self.units.iter().filter(|u| u.hp > 0).cloned().collect();
+    }
+
+    fn print_summary(&self, rounds: usize) {
+        println!();
+        println!("After round {}:\n{}", rounds, self.map);
+        self.units
+            .iter()
+            .for_each(|u| println!("{}@{:?}: {}", u.kind, u.pos, u.hp));
+        println!();
+    }
+
+    fn try_move(&self, unit: &Unit) -> MoveResult {
         let enemies: Vec<&Unit> = self
             .units
             .iter()
             .filter(|u| u.kind != unit.kind && u.hp > 0)
             .collect();
+        if enemies.is_empty() {
+            return MoveResult::NoEnemies;
+        }
 
         if enemies.iter().any(|u| unit.in_range(&u)) {
-            return Some(unit.pos);
+            return MoveResult::InRange;
         }
 
         let unit_positions: Vec<Pos> = self
@@ -135,16 +189,16 @@ impl System {
             .filter(|u| u.hp > 0)
             .map(|u| u.pos)
             .collect();
-        println!("unit_positions={:?}", unit_positions);
+        // println!("unit_positions={:?}", unit_positions);
         let open_squares: Vec<Pos> = enemies
             .iter()
             .flat_map(|u| self.map.open_squares_around(u.pos.0, u.pos.1))
             .filter(|p| !unit_positions.contains(p))
             .collect();
-        println!("open_squares={:?}", open_squares);
+        // println!("open_squares={:?}", open_squares);
 
         if open_squares.is_empty() {
-            return None;
+            return MoveResult::CannotMove;
         }
 
         let mut paths: Vec<Vec<Pos>> = open_squares
@@ -156,7 +210,7 @@ impl System {
             .collect();
 
         if paths.is_empty() {
-            return None;
+            return MoveResult::CannotMove;
         }
 
         paths.sort_by_key(|p| p.len());
@@ -168,7 +222,7 @@ impl System {
             .collect();
         shortest_paths.sort_by(|a, b| cmp_pos(a[0], b[0]));
         let shortest_path = shortest_paths.first().unwrap();
-        shortest_path.first().cloned()
+        MoveResult::Move(shortest_path.first().cloned().unwrap())
     }
 
     fn attack(&self, unit: &Unit) -> Option<(Pos, usize)> {
@@ -316,5 +370,23 @@ impl Unit {
         let (sx, sy) = self.pos;
         let (ox, oy) = other.pos;
         (sx == ox && (sy - 1 == oy || sy + 1 == oy)) || (sy == oy && (sx - 1 == ox || sx + 1 == ox))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn compare_positions() {
+        let top = (3, 3);
+        let left = (2, 4);
+        let right = (4, 4);
+        let bottom = (3, 5);
+
+        assert_eq!(Ordering::Less, cmp_pos(top, left));
+        assert_eq!(Ordering::Less, cmp_pos(left, right));
+        assert_eq!(Ordering::Less, cmp_pos(right, bottom));
     }
 }
